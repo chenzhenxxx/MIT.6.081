@@ -91,3 +91,13 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+uint64
+sys_trace(void)
+{
+  int mask;
+  argint(0, &mask); //从内核中获取参数int参数使用这个函数，把获得的数值放到mask里面
+
+  myproc()->mask = mask; //把这个掩码进行设置，这个数值就是proc里面的mask，设置进去
+
+  return 0;
+}
