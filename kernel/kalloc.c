@@ -20,11 +20,11 @@ struct run {
 
 struct {
   struct spinlock lock;
-  struct run *freelist;
-} kmem;
+  struct run *freelist;  //剩余的空闲列表
+} kmem; 
 
 void
-kinit()
+kinit()  //初始化
 {
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)PHYSTOP);
@@ -57,7 +57,7 @@ kfree(void *pa)
   r = (struct run*)pa;
 
   acquire(&kmem.lock);
-  r->next = kmem.freelist;
+  r->next = kmem.freelist;  //头插法
   kmem.freelist = r;
   release(&kmem.lock);
 }
@@ -79,4 +79,17 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+void
+kcollect(uint64 *dst)
+{ *dst=0;
+  struct run *r;
+  acquire(&kmem.lock);
+  r=kmem.freelist;
+  while(r)
+  {
+    *dst+=PGSIZE;
+    r=r->next;
+  }
+  release(&kmem.lock);
 }

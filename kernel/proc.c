@@ -719,3 +719,14 @@ void unsetprocnum(uint64* nproc)//收集进程数
   }
 
 }
+void proc_collect(uint64*dst)
+{  *dst=0;
+   struct proc *p;
+   for(p=proc;p<&proc[NPROC];p++)
+   {
+    if(p->state!=UNUSED)
+    {
+      (*dst)++;
+    }
+   } 
+}
