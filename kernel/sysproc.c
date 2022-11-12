@@ -73,8 +73,35 @@ sys_sleep(void)
 #ifdef LAB_PGTBL
 int
 sys_pgaccess(void)
-{
+{  
   // lab pgtbl: your code here.
+  struct proc *proc=myproc();
+  uint64 va;
+  argaddr(0,&va);
+  int npage;
+  argint(1,&npage);
+  uint64 useaddr;
+  uint64 abits=0;
+  argaddr(2,&useaddr);
+  if(npage>64)
+  {
+    printf("page overflow");
+    return -1;
+  }
+  acquire(&tickslock);
+  
+  for (uint64 p=va;p<va+npage*PGSIZE;p+=PGSIZE)
+  {
+    pte_t *pte=walk(proc->pagetable,p,1);
+    if(*pte&PTE_A)
+    { 
+      abits=abits|(1<<((p-va)/PGSIZE));
+      *pte=(*pte)&(~(PTE_A));
+    }
+  }
+  copyout(proc->pagetable,useaddr,(char *)&abits,sizeof(abits));
+  release(&tickslock);
+
   return 0;
 }
 #endif
