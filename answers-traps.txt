@@ -4,3 +4,4 @@
 4.jalr到main中的printf之后，ra的值0X34
 5.He110 World   修改成0x726c6400 不用修改57616
 6.268591016
+yes
