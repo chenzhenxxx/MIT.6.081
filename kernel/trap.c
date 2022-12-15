@@ -16,6 +16,7 @@ void kernelvec();
 
 extern int devintr();
 
+
 void
 trapinit(void)
 {
@@ -33,10 +34,58 @@ trapinithart(void)
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
 //
+
+int cowpage(pagetable_t pagetable, uint64 va){
+  
+  if(va>=MAXVA)
+   {
+    return -1;
+   }
+   pte_t * pte =walk(pagetable,va,0);
+   if(pte==0)
+    return -1;
+   if((*pte&PTE_V)==0)
+    return -1;
+   return (*pte &PTE_COW ?0 :-1);
+
+}
+
+void* cowalloc(pagetable_t pagetable,uint64 va)
+{
+   if(va%PGSIZE!=0)
+   return 0;
+
+   uint64 pa=walkaddr(pagetable,va);  //获得对应的物理地址
+   if(pa==0)
+   return 0;
+   pte_t * pte=walk(pagetable,va,0);
+   if(krefcnt((char *)pa)==1)
+   {
+     *pte|=PTE_W;
+     *pte&=~PTE_COW;
+     return (void *)pa;
+   }else {
+    char *mem=kalloc();
+    if(mem==0)
+    return 0;
+
+    memmove(mem,(char *)pa,PGSIZE);
+    *pte&=~PTE_V;
+    if(mappages(pagetable,va,PGSIZE,(uint64)mem,(PTE_FLAGS(*pte)|PTE_W)&~PTE_COW)!=0){
+      kfree(mem);
+      *pte|=PTE_V;
+      return 0;
+    }
+   kfree((char *)PGROUNDDOWN(pa));
+   return mem;
+   }
+
+}
+
 void
 usertrap(void)
 {
-  int which_dev = 0;
+  int which_dev = 0; 
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -65,7 +114,14 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  }
+   else if(r_scause()==15 || r_scause()==13)
+   {
+     uint64 fault_va =r_stval();
+     if(fault_va >=p->sz || cowpage(p->pagetable,fault_va) !=0 || cowalloc(p->pagetable,PGROUNDDOWN(fault_va))==0)
+     p->killed=1;
+   }
+   else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);

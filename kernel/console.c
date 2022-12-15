@@ -137,7 +137,7 @@ consoleintr(int c)
 {
   acquire(&cons.lock);
 
-  switch(c){
+  switch(c) {
   case C('P'):  // Print process list.
     procdump();
     break;
