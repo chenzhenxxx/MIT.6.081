@@ -14,28 +14,36 @@ void freerange(void *pa_start, void *pa_end);
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
-struct run {
+struct run
+{
   struct run *next;
 };
 
-struct {
+struct
+{
   struct spinlock lock;
   struct run *freelist;
 } kmem;
 
-void
-kinit()
+struct
 {
-  initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  struct spinlock lock;
+  struct run *freelist;
+} CPU_list[NCPU];
+void kinit()
+{
+  for (int i = 0; i < NCPU; i++)
+  {
+    initlock(&CPU_list[i].lock, "kmem");
+  }
+  freerange(end, (void *)PHYSTOP);
 }
 
-void
-freerange(void *pa_start, void *pa_end)
+void freerange(void *pa_start, void *pa_end)
 {
   char *p;
-  p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  p = (char *)PGROUNDUP((uint64)pa_start);
+  for (; p + PGSIZE <= (char *)pa_end; p += PGSIZE)
     kfree(p);
 }
 
@@ -43,23 +51,25 @@ freerange(void *pa_start, void *pa_end)
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
-void
-kfree(void *pa)
+void kfree(void *pa)
 {
   struct run *r;
-
-  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+  int cpu_id;
+  push_off();
+  cpu_id = cpuid();
+  pop_off();
+  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
-  r = (struct run*)pa;
+  r = (struct run *)pa;
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+  acquire(&CPU_list[cpu_id].lock);
+  r->next = CPU_list[cpu_id].freelist;
+  CPU_list[cpu_id].freelist = r;
+  release(&CPU_list[cpu_id].lock);
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -69,14 +79,34 @@ void *
 kalloc(void)
 {
   struct run *r;
+  int cpu_id;
+  push_off();
+  cpu_id = cpuid();
+  pop_off();
+  acquire(&CPU_list[cpu_id].lock);
+  r = CPU_list[cpu_id].freelist;
+  if (r)
+    CPU_list[cpu_id].freelist = r->next;
+  else
+  {
+    for (int i = 0; i < NCPU; i++)
+    {
+      if (i == cpu_id)
+       continue;
+        acquire(&CPU_list[i].lock);
+        r = CPU_list[i].freelist;
+        if (r)
+        {
+          CPU_list[i].freelist = r->next;
+        }
+        release(&CPU_list[i].lock);
+        if(r)
+        break;
+    }
+  }
+  release(&CPU_list[cpu_id].lock);
 
-  acquire(&kmem.lock);
-  r = kmem.freelist;
-  if(r)
-    kmem.freelist = r->next;
-  release(&kmem.lock);
-
-  if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
-  return (void*)r;
+  if (r)
+    memset((char *)r, 5, PGSIZE); // fill with junk
+  return (void *)r;
 }
