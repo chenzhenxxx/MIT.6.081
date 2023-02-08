@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "mutex": "c"
+        "mutex": "c",
+        "buf.h": "c"
     }
 }
